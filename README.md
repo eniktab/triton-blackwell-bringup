@@ -167,16 +167,6 @@ don't lie about the arch.
 * **Keeping `~/.triton/cache` around when changing arch or toolchain** —
   see "Cache hygiene + cross-arch correctness" above.
 
-## Citation
-
-If you reference this workaround in published work, please cite the upstream
-PyTorch issue/discussion linked in `REFERENCES.md`, and feel free to credit
-this repo:
-
-```
-E. Niktab. Triton bring-up on Blackwell sm_121. 2026. github.com/eniktab/triton-blackwell-bringup
-```
-
 ## License
 
 MIT
