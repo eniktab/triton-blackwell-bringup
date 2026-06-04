@@ -102,11 +102,70 @@ unset TRITON_OVERRIDE_ARCH
   to `sm_90`, kernels emit Hopper SASS that the Blackwell driver cannot load
   — hence the misleading "no kernel image" error.
 
+## Cache hygiene + cross-arch correctness
+
+Per [@tbraun96 (Atlas)](https://github.com/triton-lang/triton/issues/10331#issuecomment-4615370311):
+the Triton compile cache key does not always carry full compute capability,
+so `~/.triton/cache` populated on one arch (or one toolchain) can be silently
+reused on a different arch and miscompile. The failure mode is **worse than
+"no kernel image"** — kernels load and compute wrong numbers.
+
+### After any toolchain upgrade, container rebuild, or move between GPU classes
+
+```bash
+# Wipe every cache that might be keyed on the old arch / old toolchain
+rm -rf ~/.triton/cache "$XDG_CACHE_HOME/triton" "$TMPDIR/triton_cache"
+#   Also wipe any TRITON_CACHE_DIR you set explicitly on persistent storage.
+
+# Force a fresh compile on every invocation while you validate.
+# Drop this once you trust the cache key.
+export TRITON_ALWAYS_COMPILE=1
+```
+
+### Empirical correctness probe
+
+`examples/cache_correctness.py` compiles three Triton kernels
+(`vec_add`, `matmul`, `softmax`) cold and warm and compares output to
+`torch` eager. **Cold and warm must be bit-identical** before you trust the
+cache.
+
+Reference numbers from 2026-06-04:
+
+|                 | cold sm_121 (Triton 3.5.0) | warm sm_121 | cold sm_90 (Triton 3.7.0) | warm sm_90 |
+|-----------------|---------------------------:|------------:|--------------------------:|-----------:|
+| vec_add fp32    | 0.00e+00                   | 0.00e+00    | 0.00e+00                  | 0.00e+00   |
+| vec_add bf16    | 0.00e+00                   | 0.00e+00    | 0.00e+00                  | 0.00e+00   |
+| softmax fp32    | 5.59e-9                    | 5.59e-9     | 5.59e-9                   | 5.59e-9    |
+| softmax bf16    | 1.91e-6                    | 1.91e-6     | 1.91e-6                   | 1.91e-6    |
+| matmul fp32     | 5.35e-2 †                  | 5.35e-2     | 6.33e-2 †                 | 6.33e-2    |
+| matmul bf16     | 1.25e-1 †                  | 1.25e-1     | 0.00e+00                  | 0.00e+00   |
+
+† tf32 default for `tl.dot`, not a cache or arch bug —
+`torch.backends.cuda.matmul.allow_tf32=True` vs `False` alone differs by
+2.1e-2 on the same matmul. Cold and warm are bit-identical on every
+kernel × dtype × arch combination.
+
+On disk, `<cache_dir>/<hash>/*.json` records `target.arch: 90` on H200 and
+`target.arch: 121` on GB10, so the metadata at least knows the arch —
+whether the lookup hash keys on arch would take more invasive instrumentation
+to prove, but the on-disk evidence is consistent with the cache not silently
+substituting across archs on Triton 3.5/3.7.
+
+### Hard rule
+
+**Never `TRITON_OVERRIDE_ARCH=<other-arch>` and never wrap `ptxas` to
+silently downgrade `sm_12*` → `sm_90`.** Both produce kernels that load and
+compute wrong rather than failing loud. If the bundled `ptxas` can't compile
+for your real arch, point `TRITON_PTXAS_PATH` at a working `ptxas` —
+don't lie about the arch.
+
 ## Doesn't help
 
 * `torch.cuda.set_per_process_memory_fraction` — unrelated.
 * `os.environ["CUDA_LAUNCH_BLOCKING"]=1` — masks but does not fix the issue.
 * Downgrading to PyTorch 2.6 — Triton there is even older and fails harder.
+* **Keeping `~/.triton/cache` around when changing arch or toolchain** —
+  see "Cache hygiene + cross-arch correctness" above.
 
 ## Citation
 

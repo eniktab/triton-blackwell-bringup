@@ -19,4 +19,16 @@ block has previously been used in the
   ships sm_121 natively.
 
 When in doubt, run `examples/smoke.py` first — its three-line env diagnostic
-prints exactly which knob is mis-set.
+prints exactly which knob is mis-set. Once the bring-up itself passes, run
+`examples/cache_correctness.py` cold and warm to confirm the Triton compile
+cache is producing bit-identical numerics on your arch/toolchain combo.
+
+## Credits
+
+* The cache-hygiene + cross-arch correctness guidance (and the
+  `examples/cache_correctness.py` probe) was added in response to feedback
+  from [@tbraun96 (Atlas)](https://github.com/triton-lang/triton/issues/10331#issuecomment-4615370311),
+  who flagged the silent-miscompile failure mode when a `~/.triton/cache`
+  populated on one arch is reused on another. The "never
+  `TRITON_OVERRIDE_ARCH`, never wrap ptxas to silently downgrade" hard rule
+  generalizes their Mamba-2 / fused-SSM bring-up experience on sm_121.
