@@ -167,6 +167,3 @@ don't lie about the arch.
 * **Keeping `~/.triton/cache` around when changing arch or toolchain** —
   see "Cache hygiene + cross-arch correctness" above.
 
-## License
-
-MIT
